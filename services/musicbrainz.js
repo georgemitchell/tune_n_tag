@@ -8,48 +8,10 @@ const ALBUM_PATH = "release";
 const SONG_PATH = "recording"
 
 module.exports = {
-  find_song: query_musicbrainz,
   query_artist: query_artist,
-  get_artist_albums: get_artist_albums
+  get_artist_albums: get_artist_albums,
+  query_song: query_song
 };
-
-function query_musicbrainz(query, on_success, on_error) {
-	var artist = null;
-	var song = null;
-	var album = null;
-
-	var regex = /([^-]+)(?:[-]([^\[]+))?(?:[\[]([^\]]+)[\]])?/;
-	var match = query.match(regex);
-	
-	if(match == null) {
-		song = query;
-	} else {
-		if(match[2] == undefined) {
-			song = match[1].trim();
-		} else {
-			artist = match[1].trim();
-			song = match[2].trim();
-		}
-		if(match[3] != undefined) {
-			album = null;
-		}
-	}
-	build_results(
-		song,
-		artist,
-		album,
-		function(type, data) {
-			if(type == "tracks") {
-				tracks = tracks.concat(data);
-			} else {
-				output = data;
-				output["tracks"] = tracks;
-				on_success(output);
-			}
-		},
-		on_error
-	);
-}
 
 function get_top_scores(url, field, on_success, on_error) {
 	data = common.get_data(
@@ -75,32 +37,10 @@ function get_top_scores(url, field, on_success, on_error) {
 	});
 }
 
-function build_results(song, artist, album, on_success, on_error) {
-	if((artist == null) && (album == null)) {
-		query_song(song, on_success, on_error);
-	} else if (album == null) {
-		query_song_and_artist(song, artist, on_success, on_error);
-	} else if (artist == null) {
-		query_song(song, on_success, on_error);
-	} else {
-		query_song_artist_and_album(song, artist, album, on_success, on_error);
-	}
-}
 
-function query_song(song, on_success, on_error) {
-	var url = MUSICBRAINZ_URL + SONG_PATH + "?fmt=json&query=" + song;
-	get_top_scores(url, "recordings", callback);
-}
-
-function query_artist(artist, on_success, on_error) {
-	var url = MUSICBRAINZ_URL + ARTIST_PATH + "?fmt=json&query=" + artist
-	get_top_scores(url, "artists", on_success, on_error)
-
-}
-
-function query_artist(query, on_success, on_error, timeout=1000) {
+function query_artist(query, on_success, on_error) {
 	var url = MUSICBRAINZ_URL + ARTIST_PATH + "?fmt=json&query=" + query;
-	setTimeout(function() { get_top_scores(url, "artists", on_success, on_error); }, timeout);
+	get_top_scores(url, "artists", on_success, on_error);
 }
 
 /*
@@ -165,4 +105,10 @@ function artist_albums_loop(artist, offset, albums, songs, progress_callback, on
 function get_artist_albums(artist, progress_callback, on_success, on_error) {
 	artist_albums_loop(artist, 0, [], [], progress_callback, on_success, on_error);
 }
+
+function query_song(song, on_success, on_error) {
+	var url = MUSICBRAINZ_URL + SONG_PATH + "?fmt=json&query=" + song;
+	get_top_scores(url, "recordings", on_success, on_error);
+}
+
 

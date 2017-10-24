@@ -209,12 +209,39 @@ class TuneForm extends Component {
       this.props.onError("Song selected, but no song found");
     } else {
       var song = selected[0];
-      this.setState(
-        {song: song},
-        function() { 
-          this.props.onLog("Using song: '" + song.title + "'"); 
-        }
-      );
+      if(song.customOption) {
+        this.props.onLog("Querying musicbrainz for " + song.title);
+        var log_function = this.props.onLog;
+        var error_function = this.props.onError;
+        fetch(`${autocomplete_url}track/?q=${song.title}`)
+          .then(resp => resp.json())
+          .then(json => {
+            if(json.success) {
+              if(json.tracks.length > 0) {
+                json.tracks.forEach(function(track) {
+                  var albums = [];
+                  track.albums.forEach(function(album) {
+                    albums.push(album.title);
+                  });
+                  log_function(`Found ${track.title} (${track.artist}) [${albums.join(",")}]`);
+                });
+              } else {
+                log_function("No songs found");
+              }
+            } else {
+              error_function(json.error);
+            }
+          }
+        );
+      } else {
+        this.setState(
+          {song: song},
+          function() { 
+            this.props.onLog("Using song: '" + song.title + "'");
+            console.log(song);
+          }
+        );  
+      }
     }
   }
 

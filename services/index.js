@@ -173,7 +173,9 @@ function send_error(db, response, error) {
 		"error": error
 	}
 	response.send(output);
-	db.close();
+	if(db !== null) {
+		db.close();
+	}
 }
 
 function get_albums(db, artist, job, progress_callback) {
@@ -334,6 +336,32 @@ app.get('/autocomplete/track/', (request, response) => {
 
 })
 
+
+app.get('/track/', (request, response) => {
+	var query = request.query["q"];
+	musicbrainz.query_song(
+		query,
+		function(songs) {
+			var tracks = [];
+			songs.map(function(song) {
+				var albums = []
+				song["releases"].map(function (release) {
+					albums.push({"title": release.title})
+				});
+				var track = {
+					title: song.title,
+					artist: song["artist-credit"][0].artist.name,
+					albums: albums
+				}
+				tracks.push(track);
+			});
+			response.send({"success": true, "tracks": tracks})
+		},
+		function(error) {
+			send_error(null, response, error);
+		}
+	);
+})
 
 app.get('/job/', (request, response) => {
 	var id = mongoose.Types.ObjectId(request.query["i"]);
