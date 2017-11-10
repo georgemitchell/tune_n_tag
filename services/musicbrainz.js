@@ -51,6 +51,21 @@ function get_artist_albums(mbid, on_success, on_error, timeout=1000) {
 	 
 }*/
 
+function get_year(date) {
+	if (date === undefined) {
+		return null;
+	}
+	if (date === null) {
+		return null;
+	}
+	var year = parseInt(date.substring(0,4));
+	if (year === NaN) {
+		console.error("Unable to parse year: " + date);
+		return null;
+	} else {
+		return year;
+	}
+}
 
 function artist_albums_loop(artist, offset, albums, songs, progress_callback, on_success, on_error) {
 	var url = MUSICBRAINZ_URL + ALBUM_PATH + "/?artist=" + artist.id + "&fmt=json&inc=recordings";
@@ -72,7 +87,9 @@ function artist_albums_loop(artist, offset, albums, songs, progress_callback, on
 					format: album.media[0].format,
 					date: album.date,
 					status: album.status,
-					country: album.country
+					country: album.country,
+					year: get_year(album.date),
+					num_tracks: album.media[0]["track-count"]
 				};
 				album.media[0].tracks.map(function(track) {
 					var track_record = {
@@ -82,7 +99,8 @@ function artist_albums_loop(artist, offset, albums, songs, progress_callback, on
 						title: track.title,
 						album_id: album.id,
 						artist_id: artist.id,
-						album: album_record
+						album: album_record,
+						track_number: track.position
 					}
 					songs.push(track_record);
 				})

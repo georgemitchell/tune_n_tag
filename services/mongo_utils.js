@@ -2,6 +2,7 @@ module.exports = {
   find_document: find_document,
   find_documents: find_documents,
   insert_documents: insert_documents,
+  upsert_document: upsert_document,
   create_job: create_job,
   job_success: job_success,
   job_fail: job_fail,
@@ -16,7 +17,11 @@ function find_document(db, collection_name, query, on_success, on_failure) {
   		console.error("Problem accessing mongodb");
   		on_failure(err);
   	} else {
-  		on_success(doc);
+  		if(doc === null) {
+  			on_failure("Unable to locate document");
+  		} else {
+  			on_success(doc);
+  		}
   	}
   });      
 }
@@ -41,16 +46,16 @@ function insert_documents(db, collection_name, documents, on_success, on_failure
   upsert_loop(db, collection_name, documents, 0, [], on_success, on_failure);
 }
 
-function upsert_document(db, collection_name, document, on_success, on_failure) {
+function upsert_document(db, collection_name, filter, document, on_success, on_failure) {
 	var collection = db.collection(collection_name);
 	find_documents(
 		db,
 		collection_name,
-		{_id: document.id},
+		filter,
 		function(results) {
 	   		if(results.length == 0) {
 	   	  		// this is new
-	   	  		console.log("Insert new: " + document.id);
+	   	  		console.log("Insert new: " + JSON.stringify(filter));
 	   	  		collection.insertOne(
 	   	  			document,
 	   	  			function(err, result) {
@@ -64,7 +69,7 @@ function upsert_document(db, collection_name, document, on_success, on_failure) 
 	   	  			}
 	   	  		);
 	   	  	} else {
-	   	  		console.log("Update: " + document.id);
+	   	  		console.log("Update: " + JSON.stringify(filter));
 	   	  		collection.replaceOne(
 	   	  			{_id: document.id },
 	   	  			document,
@@ -87,9 +92,11 @@ function upsert_loop(db, collection_name, documents, index, db_results, on_succe
 	if(index == documents.length) {
 		on_success(db_results);
 	} else {
+		var filter = { _id: documents[index].id };
 		upsert_document(
 			db,
 			collection_name,
+			filter,
 			documents[index],
 			function(result) {
 				db_results.push(result);
@@ -119,28 +126,76 @@ function create_job(db, job, on_success, on_failure) {
 	);
 }
 
-function job_success(db, job, update) {
+function job_success(db, job, update, on_success, on_failure) {
 	var filter = {_id: job._id}
 	update["time_ended"] = Date.now();
 	update["success"] = true;
 	update["progress"] = 100;
 	var collection = db.collection("jobs");
-	collection.updateOne(filter, {$set:update});
+	collection.updateOne(
+		filter,
+		{$set:update},
+		function(err, result) {
+			db.close();
+			if(err !== null) {
+	  			if (on_failure !== undefined) {
+					on_failure(err);
+				}
+	  		} else {
+	  			if (on_success !== undefined) {
+	  				on_success();
+	  			}
+	  		}	
+		}
+	);
 }
 
-function job_fail(db, job, error) {
+function job_fail(db, job, error, on_success, on_failure) {
 	var filter = {_id: job._id}
+	update = {};
 	update["time_ended"] = Date.now();
 	update["error"] = error
 	update["success"] = false;
 	var collection = db.collection("jobs");
-	collection.updateOne(filter, update);
-	db.close();
+	collection.updateOne(
+		filter,
+		{$set: update},
+		function(err, result) {
+			db.close();
+			if(err !== null) {
+	  			if (on_failure !== undefined) {
+					on_failure(err);
+				}
+	  		} else {
+	  			if (on_success !== undefined) {
+	  				on_success();
+	  			}
+	  		}	
+		}
+	);
 }
 
-function update_job_progress(db, job, progress) {
+function update_job_progress(db, job, progress, message, on_success, on_failure) {
 	var filter = {_id: job._id}
 	var update = {"progress": progress};
 	var collection = db.collection("jobs");
-	collection.updateOne(filter, {$set:update});
+	var command = {$set: update};
+	if (message !== null) {
+		command["$push"] = {status: message};
+	}
+	collection.updateOne(
+		filter,
+		command,
+		function(err, result) {
+			if(err !== null) {
+				if (on_failure !== undefined) {
+					on_failure(err);
+				}
+	  		} else {
+	  			if (on_success !== undefined) {
+	  				on_success();
+	  			}
+	  		}	
+		}
+	);
 }

@@ -239,7 +239,7 @@ app.get('/albums/', (request, response) => {
 									artist,
 									created_job,
 									function(progress) {
-										mongo_utils.update_job_progress(db, created_job, progress);
+										mongo_utils.update_job_progress(db, created_job, progress, "Getting Albums");
 									}
 								);
 								response.send({"success": true, "job_id": created_job._id})	
@@ -319,19 +319,22 @@ app.get('/autocomplete/track/', (request, response) => {
 							album: results[i].album.title,
 							format: results[i].album.format,
 							country: results[i].album.country,
-							date: results[i].album.date,
-							status: results[i].album.status
+							year: results[i].album.year,
+							status: results[i].album.status,
+							num_tracks: results[i].album.num_tracks,
+							track_number: results[i].track_number
 						}
 						tracks.push(record);
 					}
 					response.send({"success": true, "tracks": tracks});
+					db.close();
 				},
 				function(error) {
-					response.send({"success": false, "error": error})
+					response.send({"success": false, "error": error});
+					db.close();
 				}
 			);
 		}
-		db.close();
 	});
 
 })
@@ -361,6 +364,131 @@ app.get('/track/', (request, response) => {
 			send_error(null, response, error);
 		}
 	);
+})
+
+app.get('/tunentag/', (request, response) => {
+	var video_id = request.query["youtube_id"];
+	var artist = request.query["artist"];
+	var album = request.query["album"];
+	var song = request.query["song"];
+	var year = request.query["year"];
+	var track_number = request.query["track_number"];
+	var total_tracks = request.query["num_tracks"];
+
+	console.log(request.query);
+
+	MongoClient.connect(mongo_url, function(err, db) {
+		if(err !== null) {
+			send_error(db, response, err);
+		} else {
+			mongo_utils.find_documents(
+				db,
+				"tagged",
+				{"youtube_id": video_id},
+				function(results) {
+					if(results.length > 0) {
+						send_error(response, video_id + " already downloaded!");
+					} else {
+						var job = {
+							"type": "tunentag",
+							"youtube_id": video_id,
+							"name": "Download and tag " + video_id,
+							"status": []
+						}
+						mongo_utils.create_job(
+							db,
+							job,
+							function(created_job) {
+								const { spawn } = require('child_process');
+								var parameters = [
+									'tunentag.sh',
+									`${video_id}`,
+									`${artist}`,
+									`${album}`,
+									`${song}`,
+									year,
+									track_number,
+									total_tracks,
+									created_job._id
+								];
+								const tunentag = spawn('bash', parameters);
+
+								tunentag.stdout.on('data', (data) => {
+									console.log(`tunentag: ${data}`);
+								});
+
+								tunentag.stderr.on('data', (data) => {
+									console.error(`tunentag (error): ${data}`);
+								});
+
+								tunentag.on('close', (code) => {
+								  	console.log(`child process exited with code ${code}`);
+								});
+
+								response.send({"success": true, "job_id": created_job._id});
+								db.close();
+							},
+							function(error) { send_error(db, response, error); }
+						);
+					}
+				},
+				function(error) { send_error(db, response, error); }
+			);
+		}
+	});
+})
+
+const tag_fields = [
+	"youtube_id",
+	"artist",
+	"album",
+	"song",
+	"year",
+	"track_number",
+	"num_tracks",
+	"track_id"
+];
+
+function parse_filter(query_params) {
+	var filter = {};
+	var tokens = query_params["filters"].split(",");
+	for(var i=0; i<tokens.length; i++) {
+		filter[tokens[i]] = query_params[tokens[i]];
+	}
+	return filter;
+}
+
+app.get('/update_tag/', (request, response) => {
+	var record = {}
+	console.log(request.query);
+	for(index in tag_fields) {
+		if (tag_fields[index] in request.query) {
+			record[tag_fields[index]] = request.query[tag_fields[index]];
+		} else {
+			console.log("unable to find: " + key);
+		}
+	}
+
+	var filter = parse_filter(request.query);
+	console.log(record);
+
+	MongoClient.connect(mongo_url, function(err, db) {
+		if(err !== null) {
+			send_error(db, response, err);
+		} else {
+			mongo_utils.upsert_document(
+				db,
+				"tagged",
+				filter,
+				record,
+				function(result) {
+					response.send({"success": true, "result": result});
+					db.close();
+				},
+				function(error) { send_error(db, response, error); }
+			);
+		}
+	});
 })
 
 app.get('/job/', (request, response) => {

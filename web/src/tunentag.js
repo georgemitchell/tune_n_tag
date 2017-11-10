@@ -5,6 +5,18 @@ import { FormGroup, ControlLabel, FormControl, HelpBlock, InputGroup, Glyphicon 
 import { Col } from 'react-bootstrap';
 import {AsyncTypeahead} from 'react-bootstrap-typeahead'; // ES2015
 
+
+const tag_fields = [
+  "youtube_id",
+  "artist",
+  "album",
+  "song",
+  "year",
+  "track_number",
+  "num_tracks",
+  "track_id"
+];
+
 const autocomplete_url = "http://127.0.0.1:35099/";
 
 class TuneNTag extends Component {
@@ -106,6 +118,24 @@ function ping_job_status(tune_form, job_id, on_success, on_failure) {
     });
 }
 
+function SubmitButton(props) {
+  return (
+    <button type="button" disabled={(props.track == null) || (props.video_id == null)} className="btn" onClick={props.onClick}>
+      Tune-n-tag
+    </button>
+  );
+}
+
+function buildUrl(base, state, extra_fields=[]) {
+  var fields = [];
+  for (var i=0; i<tag_fields.length; i++) {
+    fields.push(tag_fields[i] + "=" + encodeURIComponent(state[tag_fields[i]]));
+  }
+
+  fields = fields.concat(extra_fields);
+
+  return base + "?" + fields.join("&");
+}
 
 class TuneForm extends Component {
   constructor(props) {
@@ -114,6 +144,8 @@ class TuneForm extends Component {
       youtube_url: "",
       artist: null,
       album: null,
+      song: null,
+      video_id: null
     }
   };
 
@@ -245,6 +277,62 @@ class TuneForm extends Component {
     }
   }
 
+
+  handleDownloadRequest() {
+    this.props.onLog("Downloading and tagging " + this.state.video_id);
+    var log_function = this.props.onLog;
+    var error_function = this.props.onError;
+    var current_state = {
+      "youtube_id": this.state.video_id,
+      "artist": this.state.song.artist,
+      "album": this.state.song.album,
+      "song": this.state.song.title,
+      "year": this.state.song.year,
+      "track_number": this.state.song.track_number,
+      "num_tracks": this.state.song.num_tracks,
+      "track_id": this.state.song.id
+    };
+    var url = buildUrl(`${autocomplete_url}tunentag/`, current_state);
+
+    fetch(url)
+      .then(resp => resp.json())
+      .then(json => {
+        if(json.success) {
+          ping_job_status(
+            this,
+            json.job_id,
+            function(job) {
+              log_function(`${job.name} Finished!`);
+              job.status.forEach(function(entry) {
+                log_function(` ${entry}`);
+              });
+              var extra_fields=[
+                'filters=track_id',
+                'src=' + job.mp3_src
+              ]
+              var tag_url = buildUrl(`${autocomplete_url}update_tag/`, current_state, extra_fields);
+              console.log(tag_url);
+              fetch(tag_url)
+                .then(tag_resp => tag_resp.json())
+                .then(tag_json => {
+                  if(tag_json.success) {
+                    log_function(`${current_state.song} successfully tagged`);
+                  } else {
+                    error_function(tag_json.error);
+                  }
+                  
+                });
+            },
+            function(error) {
+              error_function(error);
+            }
+          );
+        } else {
+          error_function(json.error);
+        }
+      });
+  }
+
   render() {
     return (
       <form>
@@ -252,6 +340,7 @@ class TuneForm extends Component {
         <ArtistField onSelectArtist={(selected) => this.handleSelectArtist(selected)} value={this.state.artist} />
         <AlbumField onSelectAlbum={(selected) => this.handleSelectAlbum(selected)} value={this.state.album} artist={this.state.artist} />
         <SongField onSelectSong={(selected) => this.handleSelectSong(selected)} value={this.state.song} artist={this.state.artist} album={this.state.album} />
+        <SubmitButton track={this.state.song} video_id={this.state.video_id} onClick={() => this.handleDownloadRequest()} />
       </form>
     );
   };
