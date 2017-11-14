@@ -56,7 +56,7 @@ job_success () {
 	popd
 }
 
-update_job $JOB_ID update 10
+update_job $JOB_ID 10
 
 if [ ! -f $DOWNLOADED_FILE ]; then
 	echo "Downloading file from YouTube"
